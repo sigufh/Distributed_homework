@@ -1,0 +1,14 @@
+/.mvn/
+/target/
+*.class
+
+# IDE
+.idea/
+.vscode/
+
+# Logs
+*.log
+
+# Env
+.env
+

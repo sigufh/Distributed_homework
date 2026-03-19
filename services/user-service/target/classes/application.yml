@@ -1,0 +1,32 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: user-service
+  datasource:
+    url: jdbc:mysql://localhost:3306/seckill?useSSL=false&serverTimezone=Asia/Shanghai
+    username: seckill
+    password: seckill
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+
+mybatis:
+  type-aliases-package: com.distributed.userservice.domain
+  mapper-locations: classpath*:mapper/**/*.xml
+
+app:
+  jwt:
+    secret: "change-me-to-a-long-random-secret"
+    expiration-seconds: 604800
+
+logging:
+  level:
+    root: INFO
+    com.distributed.userservice: DEBUG
+

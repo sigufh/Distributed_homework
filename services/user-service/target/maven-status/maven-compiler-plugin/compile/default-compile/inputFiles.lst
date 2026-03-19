@@ -1,0 +1,13 @@
+/Users/sigufh/Distributed_homework/Distributed_homework/services/user-service/src/main/java/com/distributed/userservice/UserServiceApplication.java
+/Users/sigufh/Distributed_homework/Distributed_homework/services/user-service/src/main/java/com/distributed/userservice/config/JwtProperties.java
+/Users/sigufh/Distributed_homework/Distributed_homework/services/user-service/src/main/java/com/distributed/userservice/domain/UserDO.java
+/Users/sigufh/Distributed_homework/Distributed_homework/services/user-service/src/main/java/com/distributed/userservice/mapper/UserMapper.java
+/Users/sigufh/Distributed_homework/Distributed_homework/services/user-service/src/main/java/com/distributed/userservice/security/JwtService.java
+/Users/sigufh/Distributed_homework/Distributed_homework/services/user-service/src/main/java/com/distributed/userservice/service/UserService.java
+/Users/sigufh/Distributed_homework/Distributed_homework/services/user-service/src/main/java/com/distributed/userservice/service/impl/UserServiceImpl.java
+/Users/sigufh/Distributed_homework/Distributed_homework/services/user-service/src/main/java/com/distributed/userservice/web/ApiResponse.java
+/Users/sigufh/Distributed_homework/Distributed_homework/services/user-service/src/main/java/com/distributed/userservice/web/GlobalExceptionHandler.java
+/Users/sigufh/Distributed_homework/Distributed_homework/services/user-service/src/main/java/com/distributed/userservice/web/UserController.java
+/Users/sigufh/Distributed_homework/Distributed_homework/services/user-service/src/main/java/com/distributed/userservice/web/dto/LoginRequest.java
+/Users/sigufh/Distributed_homework/Distributed_homework/services/user-service/src/main/java/com/distributed/userservice/web/dto/MeResponse.java
+/Users/sigufh/Distributed_homework/Distributed_homework/services/user-service/src/main/java/com/distributed/userservice/web/dto/RegisterRequest.java

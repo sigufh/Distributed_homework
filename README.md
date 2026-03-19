@@ -1,355 +1,200 @@
-## 项目说明：高并发读 / 容器化 / 负载均衡 / 分布式缓存
+# 商品库存与秒杀系统设计 + 项目骨架（Spring Boot）
 
-本示例项目用 **Node.js + Redis + Nginx + Docker** 演示：
+## 系统设计文档
 
-- **容器环境**：分别以容器方式启动数据库（Redis）、后端服务多实例、Nginx。
-- **负载均衡**：Nginx 反向代理多个后端实例，支持轮询、ip_hash、加权轮询等策略。
-- **动静分离**：前端 `index.html` 等静态资源由 Nginx 直接返回，后端 API 经 Nginx 转发。
-- **分布式缓存**：使用 Redis 对商品详情页做缓存，并处理缓存穿透、击穿、雪崩问题。
-- **可视化界面**：前端界面支持选择负载均衡算法、展示 JMeter 压测结果和实例请求统计。
+### 目标与约束
+- **目标**：支持商品浏览、库存扣减、下单支付（此处先实现下单创建）、秒杀高并发下的“防超卖、可追踪、可扩展”。
+- **核心约束**：高并发（峰值流量）、库存一致性（不超卖）、接口幂等、可观测、可水平扩展。
 
----
+### 系统架构草图（服务拆分）
+采用微服务拆分（可先单体开发、后按模块拆服务），服务边界如下：用户服务、商品服务、库存服务、订单服务。
 
-### 一、目录结构
+```mermaid
+flowchart LR
+  U[客户端 Web/APP] --> GW[API Gateway/Ingress]
+  GW --> AUTH[用户服务 user-service]
+  GW --> P[商品服务 product-service]
+  GW --> I[库存服务 inventory-service]
+  GW --> O[订单服务 order-service]
 
-```text
-.
-├─ package.json          # Node.js 项目配置
-├─ Dockerfile            # 后端服务镜像构建文件
-├─ docker-compose.yml    # 一键启动 Redis + 后端多实例 + Nginx
-├─ src
-│  └─ server.js          # Node.js 后端服务（商品详情 + Redis 缓存）
-├─ nginx
-│  └─ nginx.conf         # Nginx 配置：负载均衡 + 动静分离
-└─ public
-   └─ index.html         # 前端可视化页面（静态资源）
+  subgraph Data[数据与中间件]
+    MYSQL[(MySQL)]
+    REDIS[(Redis)]
+    MQ[(消息队列)]
+  end
+
+  AUTH --> MYSQL
+  P --> MYSQL
+  I --> MYSQL
+  O --> MYSQL
+
+  AUTH --> REDIS
+  P --> REDIS
+  I --> REDIS
+  O --> REDIS
+
+  O --> MQ
+  I --> MQ
 ```
 
+#### 服务职责
+- **用户服务**：注册/登录、用户资料、鉴权（JWT）、风控基础能力（限流/黑名单可后续加）。
+- **商品服务**：商品信息（SPU/SKU）、上下架、价格、活动信息查询（秒杀活动可扩展）。
+- **库存服务**：库存查询、预扣/扣减、回滚、对账；秒杀核心一致性点。
+- **订单服务**：创建订单、订单状态流转（创建/已支付/已取消/超时关闭）、幂等控制。
+
+### 各服务 API 接口（RESTful，草案）
+统一约定：
+- Base URL：`/api/v1`
+- 认证：`Authorization: Bearer <token>`
+- 响应：`{ "code": 0, "message": "OK", "data": ... }`
+
+#### 用户服务（user-service）
+- **POST** `/api/v1/users/register`：用户注册（用户名/手机号 + 密码）
+- **POST** `/api/v1/users/login`：登录换取 JWT
+- **GET** `/api/v1/users/me`：获取当前用户信息（需登录）
+
+请求示例（注册）：
+```json
+{ "username": "alice", "password": "Passw0rd!" }
+```
+
+#### 商品服务（product-service）
+- **GET** `/api/v1/products`：分页列表（关键字/类目/上下架）
+- **GET** `/api/v1/products/{productId}`：商品详情
+- **POST** `/api/v1/products`：创建商品（后台）
+- **PATCH** `/api/v1/products/{productId}`：更新商品（后台）
+
+#### 库存服务（inventory-service）
+- **GET** `/api/v1/inventories/{skuId}`：查询可用库存
+- **POST** `/api/v1/inventories/{skuId}/reserve`：预扣库存（下单前）
+- **POST** `/api/v1/inventories/{skuId}/commit`：确认扣减（支付成功/创建订单成功策略二选一）
+- **POST** `/api/v1/inventories/{skuId}/release`：释放预扣（取消/超时）
+
+秒杀场景建议（后续实现）：
+- Redis 预减库存（Lua 原子）+ 异步落库（MQ）+ 失败补偿（对账任务）
+- 或 MySQL 行锁 `update ... set available=available-1 where sku_id=? and available>0`
+
+#### 订单服务（order-service）
+- **POST** `/api/v1/orders`：创建订单（幂等键：`Idempotency-Key`）
+- **GET** `/api/v1/orders/{orderId}`：订单详情
+- **GET** `/api/v1/orders`：我的订单列表
+- **POST** `/api/v1/orders/{orderId}/cancel`：取消订单（触发库存释放）
+
+### 数据库 ER 图（用户表、商品表、库存表、订单表）
+
+```mermaid
+erDiagram
+  USERS ||--o{ ORDERS : places
+  PRODUCTS ||--o{ INVENTORIES : has
+  PRODUCTS ||--o{ ORDERS : referenced
+
+  USERS {
+    bigint id PK
+    varchar username
+    varchar password_hash
+    varchar phone
+    varchar email
+    datetime created_at
+    datetime updated_at
+  }
+
+  PRODUCTS {
+    bigint id PK
+    varchar title
+    varchar sku_code
+    decimal price
+    tinyint status
+    datetime created_at
+    datetime updated_at
+  }
+
+  INVENTORIES {
+    bigint id PK
+    bigint product_id FK
+    bigint sku_id
+    int total
+    int available
+    int reserved
+    int version
+    datetime updated_at
+  }
+
+  ORDERS {
+    bigint id PK
+    bigint user_id FK
+    bigint product_id FK
+    varchar order_no
+    int quantity
+    decimal amount
+    tinyint status
+    varchar idempotency_key
+    datetime created_at
+    datetime updated_at
+  }
+```
+
+### 技术栈选型说明（初选）
+- **语言**：Java 17
+- **框架**：Spring Boot 3（Web/Validation）
+- **ORM**：MyBatis（配合 XML/注解 Mapper）
+- **数据库**：MySQL 8
+- **缓存**：Redis（库存热点、令牌桶限流、会话/黑名单）
+- **消息队列**：RabbitMQ / Kafka（异步下单、库存落库、延时关单）
+- **网关**：Spring Cloud Gateway / Nginx Ingress（后续按部署形态选择）
+- **鉴权**：JWT（用户服务签发；其他服务校验）
+- **迁移**：Flyway（建表版本化）
+- **容器化**：Docker Compose（本地一键起 MySQL/Redis）
+
 ---
 
-### 二、启动方式
+## 环境准备（本地开发）
+- **JDK**：17+
+- **Maven**：3.9+
+- **Docker Desktop**：用于启动 MySQL/Redis
 
-#### 1. 准备环境
+启动依赖：
+1. `docker compose up -d`
+2. 启动 `services/user-service`（IDE 或 `mvn -pl services/user-service spring-boot:run`）
 
-- 安装 Docker 与 Docker Compose（Windows 可使用 Docker Desktop）。
-- 确认 80 端口未被其他程序占用。
+---
 
-#### 2. 一键启动所有服务
+## 当前实现进度
+- 已规划：多服务拆分、API、ER、选型
+- 即将落地：**项目代码框架 + 用户注册/登录（user-service）**
 
-在项目根目录执行：
+---
 
+## user-service 快速启动（本地）
+
+### 1. 启动依赖
+确保安装了 Docker Desktop，然后执行：
+1. `docker compose up -d`
+
+### 2. 启动服务
+在仓库根目录执行（使用内置 `mvnw` 自动下载 Maven）：
+1. `bash mvnw -pl services/user-service spring-boot:run`
+
+服务默认端口：`8081`
+
+### 3. 测试接口
+注册：
 ```bash
-docker-compose up -d --build
+curl -s -X POST "http://localhost:8081/api/v1/users/register" \
+  -H "Content-Type: application/json" \
+  -d '{"username":"alice","password":"Passw0rd!","phone":"13800000000","email":"alice@example.com"}'
 ```
 
-启动完成后会包含：
-
-- `redis`：Redis 缓存服务，端口 `6379`（宿主机也映射为 6379）。
-- `backend1`：Node.js 后端实例 1，端口 `8081`（容器内）。
-- `backend2`：Node.js 后端实例 2，端口 `8082`（容器内）。
-- `nginx`：Nginx，监听宿主机 `80` 端口，对外提供统一入口。
-
-访问前端页面：
-
-- 浏览器打开：`http://localhost/`
-
-停止服务：
-
+登录：
 ```bash
-docker-compose down
+curl -s -X POST "http://localhost:8081/api/v1/users/login" \
+  -H "Content-Type: application/json" \
+  -d '{"username":"alice","password":"Passw0rd!"}'
 ```
 
----
-
-### 三、动静分离与 Nginx 负载均衡
-
-#### 1. 动静分离
-
-- `public/index.html` 等静态文件由 Nginx 直接返回：
-  - Nginx 中配置：`root /usr/share/nginx/html; index index.html;`
-  - 静态资源路径：`/`（例如 `http://localhost/`）。
-- 后端 API 经 Nginx 转发到多实例：
-  - 示例：`/api/products/1` 通过 upstream 转发到 `backend1` 或 `backend2`。
-
-#### 2. 上游 upstream 与负载均衡算法
-
-在 `nginx/nginx.conf` 中定义了多个 upstream：
-
-- `upstream backend_rr`：默认轮询。
-- `upstream backend_ip_hash`：`ip_hash`。
-- `upstream backend_weighted`：加权轮询（例如 backend2 权重更高）。
-
-并通过不同的前缀路由区分：
-
-- `/api_rr/`：使用 `backend_rr`（轮询）。
-- `/api_ip/`：使用 `backend_ip_hash`。
-- `/api_w/`：使用 `backend_weighted`。
-- `/api/`：默认走 `backend_rr`，方便 JMeter 压测。
-
-前端会根据下拉框选择不同算法，然后访问对应的前缀：
-
-- 例如选择轮询，则请求：`/api_rr/api/products/1`。
-
-另外，docker-compose 中已将多个端口映射到宿主机，方便你做不同层面的压测：
-
-- `http://localhost:80`：Nginx，对外统一入口，同时提供静态资源和代理接口。
-- `http://localhost:8081`：后端实例 1，可直接压后端服务（绕过 Nginx）。
-- `http://localhost:8082`：后端实例 2，同上。
-- `http://localhost:8083`：后端实例 3，同上。
-- `http://localhost:8084`：后端实例 4，同上。
-
----
-
-### 四、后端服务与 Redis 分布式缓存
-
-后端为一个简单的 Node.js/Express 服务（`src/server.js`），其核心特性：
-
-- 简单内存“数据库”：
-  - 预置了几条商品数据（`id=1/2/3`，名称、价格、库存等）。
-- 商品详情接口：`GET /api/products/:id`
-  - **先查 Redis 缓存**，命中则直接返回。
-  - 未命中时访问“数据库”，并将结果写入 Redis。
-  - 返回 JSON，其中 `msg` 字段会标识是否命中缓存。
-
-#### 1. 缓存穿透
-
-- 对不存在的商品（例如 `id=9999`），如果每次都直击数据库，会造成缓存穿透。
-- 处理策略：
-  - 对查询结果为 `null` 的情况，在缓存中写入 `"null"`，并设置较短 TTL（如 10 秒）。
-  - 之后对同样的 id 访问，直接走缓存返回 404，保护后端数据库。
-
-#### 2. 缓存击穿
-
-- 热点 key 在某一时刻失效，恰好有大量请求同时访问，会导致瞬间打爆数据库。
-- 处理策略：
-  - 针对每个商品 id 使用一个 Redis 锁 key，如 `lock:product:1`。
-  - 请求先尝试获取锁：
-    - 成功获取锁的请求负责查询数据库并重建缓存。
-    - 未获取到锁的请求等待一小段时间后重新尝试从缓存读取。
-  - 在 `server.js` 中有简易互斥锁实现（非分布式强一致，但演示足够）。
-
-#### 3. 缓存雪崩
-
-- 大量 key 在同一时间同时过期，导致大量请求直接打到数据库。
-- 处理策略：
-  - 设置基础 TTL（如 60 秒），再叠加一个随机抖动（例如 `+ 0~60 秒`）。
-  - 让不同 key 的到期时间分散，从而降低集中失效的风险。
-
----
-
-### 五、前端界面说明（index.html）——压测结果如何“显示出来”
-
-在 `http://localhost/` 打开后，可以看到几个模块：
-
-- **1. 通过 Nginx 访问商品详情**
-  - 下拉框选择负载均衡算法：轮询 / ip_hash / 加权轮询。
-  - 输入商品 ID（默认 1），点击“查询商品详情”按钮。
-  - 下方会展示接口返回结果，以及是否命中缓存（`msg` 中带有 `OK(缓存)`）。
-
-- **2. 后端实例状态**
-  - 点击“刷新实例状态”按钮，前端会调用后端 `/api/instance/info` 接口。
-  - 表格中展示每个实例的端口、进程 PID、累计请求数。
-  - 可以在 JMeter 压测后对比请求分布是否均衡。
-
-- **3. JMeter 压测结果可视化（手动录入）**
-  - **这是“压测结果展示”的主要入口**：
-    1. 在 JMeter 中对某个接口（如 `/api/products/1`）压测，查看聚合报告/汇总报告；
-    2. 记录该场景的描述（例如“100 线程 + 轮询 + 开启缓存”）、平均响应时间、P90、P99、错误率；
-    3. 回到 `http://localhost/` 页面，在“3. JMeter 压测结果可视化”区域把这些数字填入输入框；
-    4. 点击“添加到结果表”按钮；
-    5. 下方表格会新增一行，展示本次压测结果。你可以多次录入，**对比不同负载均衡算法 / 是否开启缓存 / 不同线程数** 等场景。
-  - 这种方式相当于：JMeter 负责“产生数据”，前端页面负责“把不同场景的关键指标放在一张表上对比展示”，从而完成作业中“压测结果可视化、在界面显示”的要求。
-
-- **4. 后端缓存与日志观察提示**
-  - 页面中给出了如何通过 `msg` 字段区分缓存命中/数据库访问。
-  - 说明如何通过 `docker logs` 查看每个实例的访问日志，满足“后端日志观察可视化/统计”的要求。
-
----
-
-### 六、JMeter 压测建议
-
-#### 1. 压测目标接口
-
-- 直接压 `Nginx` 暴露的地址，例如：
-  - `http://localhost/api/products/1`（默认轮询）
-  - 也可以显式选择不同负载：  
-    - `http://localhost/api_rr/api/products/1`  
-    - `http://localhost/api_ip/api/products/1`  
-    - `http://localhost/api_w/api/products/1`
-
-#### 2. 基本压测方案
-
-示例配置（可根据作业需求调整）：
-
-- 线程组：
-  - 线程数：100
-  - Ramp-Up：10 秒
-  - 循环次数：20
-- 监听器：
-  - 聚合报告 / 汇总报告（查看平均时间、P90、P99、错误率等）。
-  - 图形结果可选。
-
-操作步骤：
-
-1. **预热**：先手工访问一次商品详情，使缓存预热。
-2. **场景 A（有缓存）**：
-   - 直接压测同一个商品 id，例如 `/api/products/1`。
-   - 观察平均响应时间、P90、P99，并记录到前端页面第 3 部分表格。
-3. **场景 B（无缓存或缓存失效）**：
-   - 可临时停掉 Redis 或者更换商品 id（例如不存在的数据），模拟缓存穿透/击穿场景。
-   - 对比数据库压力与响应时间。
-4. **多负载均衡策略对比**：
-   - 分别以 `/api_rr/`、`/api_ip/`、`/api_w/` 为前缀进行压测。
-   - 观察实例请求数（通过前端“后端实例状态”模块 + `docker logs`）是否符合预期。
-
----
-
-### 七、日志与请求分布观察
-
-- 查看各后端实例日志：
-
+获取当前用户信息（示例 token 需要替换为登录返回的 token）：
 ```bash
-docker logs backend1
-docker logs backend2
+curl -s -X GET "http://localhost:8081/api/v1/users/me" \
+  -H "Authorization: Bearer <token>"
 ```
-
-- 日志中包含：
-  - 时间、IP、HTTP 方法、URL、状态码、响应时间等信息（使用 `morgan` 中间件）。
-  - 可统计每个容器处理的请求数，以验证负载均衡是否均衡。
-- 如果需要更直观的统计，可以：
-  - 利用 `grep` + `wc -l` 统计某时间段的请求数；
-  - 或额外写简单脚本（不过本作业中不强制要求）。
-
----
-
-### 八、本地（非 Docker）运行（可选）
-
-如果你想在本机直接运行后端服务进行调试（无需 Docker）：
-
-1. 安装依赖：
-
-```bash
-npm install
-```
-
-2. 启动 Redis（本机安装或使用 docker 单独起一个 Redis）。
-
-3. 启动后端服务（指定不同端口起两个实例）：
-
-```bash
-PORT=8081 node src/server.js
-PORT=8082 node src/server.js
-```
-
-4. 自行安装并配置 Nginx，让其配置与 `nginx/nginx.conf` 类似，即可完成本地调试。
-
----
-
-如需要，我也可以帮你根据学校或课程的具体要求，对 README 中的说明进一步调整，使其更贴合作业提交模板。 
-
----
-
-### 九、JMeter 使用文档（详细步骤）
-
-本节把 **从零开始使用 JMeter 压测本项目** 的流程写成一份“小手册”，方便直接照着做。
-
-#### 1. 安装与启动 JMeter
-
-1. 到官网下载安装包（Apache JMeter，建议 5.x 版本，免安装版即可）。
-2. 解压后，进入 `bin` 目录，双击：
-   - Windows：`jmeter.bat`
-   - macOS / Linux：执行 `./jmeter`
-3. 启动后可以看到左侧是“测试计划”树，右侧是各组件的配置界面。
-
-> 在压测前，先确保本项目已经运行：  
-> 在当前项目根目录执行 `docker-compose up -d --build`，浏览器访问 `http://localhost/` 能打开页面。
-
-#### 2. 创建一个基础压测脚本（压后端接口）
-
-1. **新建测试计划**
-   - 打开 JMeter 后，默认就有一个“测试计划”。
-   - 可以在右侧把名称改成：`高并发读作业-接口压测`（名称随意）。
-
-2. **添加线程组（线程数 / 并发配置）**
-   - 在“测试计划”上右键 → `添加` → `Threads(Users)` → `线程组`。
-   - 选中“线程组”，在右侧配置：
-     - **线程数（用户数）**：例如 `100`
-     - **Ramp-Up 时间（秒）**：例如 `10`（表示 10 秒内逐步增加到 100 线程）
-     - **循环次数**：例如 `20`（每个线程请求 20 次）
-   - 这就是本次压测的“并发模型”。
-
-3. **添加 HTTP 请求（要压哪一个接口）**
-   - 在线程组上右键 → `添加` → `取样器` → `HTTP 请求`。
-   - 选中新建的 HTTP 请求，右侧配置：
-     - **名称**：如 `压测-轮询-商品详情`。
-     - **协议**：`http`
-     - **服务器名称或IP**：`localhost`
-     - **端口号**：`80`（也可以留空，默认 80）
-     - **方法**：`GET`
-     - **路径**：按照你要测试的场景选择，例如：
-       - 默认轮询：`/api/products/1`
-       - 显式轮询 upstream：`/api_rr/api/products/1`
-       - ip_hash：`/api_ip/api/products/1`
-       - 加权轮询：`/api_w/api/products/1`
-
-4. **添加监听器（查看结果报表）**
-   - 在线程组上右键 → `添加` → `监听器` → 选择以下至少一种：
-     - `聚合报告`（Aggregate Report）
-     - `汇总报告`（Summary Report）
-   - 你也可以加上 `察看结果树` 方便调试单个请求是否成功。
-
-完成以上步骤后，一个最基本的压测脚本就配置好了。
-
-#### 3. 如何对“静态资源”进行压测
-
-静态资源（例如首页 `index.html`、CSS、JS）的请求会 **只经过 Nginx，不会打到后端实例**（除非页面里又发起 Ajax 请求）。  
-你可以单独压静态资源来观察 Nginx 处理静态文件时的性能表现，再与压后端接口做对比。
-
-1. **静态首页压测（index.html）**
-   - 在线程组下再添加一个 HTTP 请求（可以新建一个线程组，也可以暂时只保留一个静态请求用于实验）：
-     - 协议：`http`
-     - 服务器：`localhost`
-     - 端口：`80`
-     - 方法：`GET`
-     - 路径：`/`  或  `/index.html`
-   - 其他并发参数（线程数 / Ramp-Up / 循环次数）可以与接口压测保持一致，方便对比。
-   - 运行压测后，在聚合报告中查看：
-     - Average / P90 / P99
-     - Error %
-   - 这代表了 **仅访问静态首页** 时，Nginx 的响应性能。
-
-2. **静态资源文件压测（如 CSS/JS/图片）**
-   - 找到页面引用的某个静态文件路径（例如 `/app.css`、`/main.js` 或 `/images/logo.png`，以你实际引用为准）。
-   - 在 HTTP 请求中设置：
-     - 路径：`/app.css`（举例）
-   - 再次运行压测，同样观察平均响应时间和 P90/P99。
-
-3. **静态资源 vs. 后端接口 对比思路**
-   - **静态资源压测**：只经过 Nginx 的文件读取与传输，理论上：
-     - 响应时间更短、更稳定；
-     - 对后端 CPU/Redis 基本无压力。
-   - **后端接口压测**：需要经过 Nginx → 多个后端实例 → Redis/“假数据库”，会：
-     - 有更高的平均响应时间；
-     - 在高并发时更容易出现抖动、排队。
-   - 你可以在报告中：
-     - 一栏是“静态首页压测结果（路径 `/`）”；
-     - 另一栏是“商品详情接口压测结果（路径 `/api/products/1`）”；  
-     - 对比 Average / P90 / P99 / Error%，说明“动静分离”带来的好处：静态资源可以高效由 Nginx 处理，而动态请求再交给后端服务。
-
-#### 3. 运行压测并读取关键指标
-
-1. 点击工具栏中的 **绿色“开始”按钮**（或菜单：运行 → 开始）。
-2. 压测结束后，点击你添加的监听器（如“聚合报告”），在右侧可以看到多行数据：
-   - 每一行通常对应一个 HTTP 请求取样器。
-3. 关键字段说明：
-   - **Average**：平均响应时间（毫秒）
-   - **90% Line / 95% Line / 99% Line**：P90 / P95 / P99 响应时间（毫秒）
-   - **Error %**：错误率（请求失败或响应码非 2xx/3xx 的比例）
-   - **Throughput**：吞吐量（每秒请求数，可选关注）
-4. 把你关心的字段记录下来，例如：
-   - 场景说明：`100 线程 / 轮询 / 开启缓存`
-   - 平均响应时间：`X ms`
-   - P90：`Y ms`
-   - P99：`Z ms`
-   - 错误率：`0 %`（或其他）
 
