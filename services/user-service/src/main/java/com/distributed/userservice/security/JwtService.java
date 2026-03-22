@@ -20,9 +20,10 @@ public class JwtService {
     }
 
     private Key signingKey() {
-        // Use HS256 with a symmetric key derived from secret.
-        // NOTE: For production, store secret in environment/secret manager.
         byte[] secretBytes = jwtProperties.getSecret().getBytes(StandardCharsets.UTF_8);
+        if (secretBytes.length < 32) {
+            throw new IllegalStateException("JWT secret must be at least 32 bytes");
+        }
         return Keys.hmacShaKeyFor(secretBytes);
     }
 
@@ -47,4 +48,3 @@ public class JwtService {
                 .getBody();
     }
 }
-

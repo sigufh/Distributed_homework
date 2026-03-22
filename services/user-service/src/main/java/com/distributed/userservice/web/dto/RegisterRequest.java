@@ -2,6 +2,7 @@ package com.distributed.userservice.web.dto;
 
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 public class RegisterRequest {
@@ -10,10 +11,11 @@ public class RegisterRequest {
     private String username;
 
     @NotBlank
-    @Size(min = 6, max = 72)
+    @Size(min = 8, max = 72)
     private String password;
 
     @Size(max = 20)
+    @Pattern(regexp = "^$|^[0-9+\\-]{6,20}$", message = "phone format is invalid")
     private String phone;
 
     @Email
@@ -52,4 +54,3 @@ public class RegisterRequest {
         this.email = email;
     }
 }
-

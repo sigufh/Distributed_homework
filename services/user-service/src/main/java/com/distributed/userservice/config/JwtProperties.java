@@ -25,4 +25,3 @@ public class JwtProperties {
         this.expirationSeconds = expirationSeconds;
     }
 }
-

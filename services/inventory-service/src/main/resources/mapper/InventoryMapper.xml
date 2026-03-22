@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.distributed.inventoryservice.mapper.InventoryMapper">
+
+    <select id="selectBySkuId" parameterType="long" resultType="com.distributed.inventoryservice.domain.InventoryDO">
+        SELECT
+            id,
+            product_id AS productId,
+            sku_id AS skuId,
+            total,
+            available,
+            reserved,
+            version,
+            updated_at AS updatedAt
+        FROM inventories
+        WHERE sku_id = #{skuId}
+        LIMIT 1
+    </select>
+
+    <update id="reserve">
+        UPDATE inventories
+        SET
+            available = available - #{quantity},
+            reserved = reserved + #{quantity},
+            version = version + 1,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE sku_id = #{skuId}
+          AND available >= #{quantity}
+    </update>
+
+    <update id="commit">
+        UPDATE inventories
+        SET
+            total = total - #{quantity},
+            reserved = reserved - #{quantity},
+            version = version + 1,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE sku_id = #{skuId}
+          AND reserved >= #{quantity}
+    </update>
+
+    <update id="release">
+        UPDATE inventories
+        SET
+            available = available + #{quantity},
+            reserved = reserved - #{quantity},
+            version = version + 1,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE sku_id = #{skuId}
+          AND reserved >= #{quantity}
+    </update>
+</mapper>

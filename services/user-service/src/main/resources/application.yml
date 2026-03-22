@@ -5,13 +5,14 @@ spring:
   application:
     name: user-service
   datasource:
-    url: jdbc:mysql://localhost:3306/seckill?useSSL=false&serverTimezone=Asia/Shanghai
-    username: seckill
-    password: seckill
+    url: ${DB_URL:jdbc:mysql://localhost:3306/seckill?useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true}
+    username: ${DB_USERNAME:seckill}
+    password: ${DB_PASSWORD:seckill}
     driver-class-name: com.mysql.cj.jdbc.Driver
   flyway:
     enabled: true
     locations: classpath:db/migration
+    table: flyway_schema_history_user
   jackson:
     serialization:
       write-dates-as-timestamps: false
@@ -22,11 +23,10 @@ mybatis:
 
 app:
   jwt:
-    secret: "change-me-to-a-long-random-secret"
-    expiration-seconds: 604800
+    secret: ${APP_JWT_SECRET:change-me-to-a-long-random-secret-at-least-32-bytes}
+    expiration-seconds: ${APP_JWT_EXPIRATION_SECONDS:604800}
 
 logging:
   level:
     root: INFO
-    com.distributed.userservice: DEBUG
-
+    com.distributed.userservice: INFO

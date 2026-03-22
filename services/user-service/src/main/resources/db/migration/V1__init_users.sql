@@ -1,4 +1,4 @@
-CREATE TABLE IF NOT EXISTS users (
+﻿CREATE TABLE IF NOT EXISTS users (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   username VARCHAR(50) NOT NULL,
   password_hash VARCHAR(255) NOT NULL,
@@ -9,4 +9,3 @@ CREATE TABLE IF NOT EXISTS users (
   UNIQUE KEY uk_users_username (username),
   UNIQUE KEY uk_users_phone (phone)
 );
-

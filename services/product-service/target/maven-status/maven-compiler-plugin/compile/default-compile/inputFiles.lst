@@ -1,0 +1,12 @@
+D:\Distributedworks\Distributed_homework\services\product-service\src\main\java\com\distributed\productservice\config\CorsConfig.java
+D:\Distributedworks\Distributed_homework\services\product-service\src\main\java\com\distributed\productservice\domain\ProductDO.java
+D:\Distributedworks\Distributed_homework\services\product-service\src\main\java\com\distributed\productservice\exception\BizException.java
+D:\Distributedworks\Distributed_homework\services\product-service\src\main\java\com\distributed\productservice\mapper\ProductMapper.java
+D:\Distributedworks\Distributed_homework\services\product-service\src\main\java\com\distributed\productservice\ProductServiceApplication.java
+D:\Distributedworks\Distributed_homework\services\product-service\src\main\java\com\distributed\productservice\service\impl\ProductServiceImpl.java
+D:\Distributedworks\Distributed_homework\services\product-service\src\main\java\com\distributed\productservice\service\ProductService.java
+D:\Distributedworks\Distributed_homework\services\product-service\src\main\java\com\distributed\productservice\web\ApiResponse.java
+D:\Distributedworks\Distributed_homework\services\product-service\src\main\java\com\distributed\productservice\web\dto\CreateProductRequest.java
+D:\Distributedworks\Distributed_homework\services\product-service\src\main\java\com\distributed\productservice\web\dto\UpdateProductRequest.java
+D:\Distributedworks\Distributed_homework\services\product-service\src\main\java\com\distributed\productservice\web\GlobalExceptionHandler.java
+D:\Distributedworks\Distributed_homework\services\product-service\src\main\java\com\distributed\productservice\web\ProductController.java

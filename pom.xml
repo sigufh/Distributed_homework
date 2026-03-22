@@ -13,6 +13,9 @@
 
   <modules>
     <module>services/user-service</module>
+    <module>services/product-service</module>
+    <module>services/inventory-service</module>
+    <module>services/order-service</module>
   </modules>
 
   <properties>
@@ -20,6 +23,9 @@
     <spring-boot.version>3.3.4</spring-boot.version>
     <mybatis-spring-boot.version>3.0.3</mybatis-spring-boot.version>
     <jjwt.version>0.12.6</jjwt.version>
+    <maven.compiler.release>${java.version}</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
   </properties>
 
   <dependencyManagement>
@@ -45,9 +51,18 @@
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-compiler-plugin</artifactId>
+          <version>3.13.0</version>
           <configuration>
-            <source>${java.version}</source>
-            <target>${java.version}</target>
+            <encoding>${project.build.sourceEncoding}</encoding>
+            <release>${maven.compiler.release}</release>
+          </configuration>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-resources-plugin</artifactId>
+          <version>3.3.1</version>
+          <configuration>
+            <encoding>${project.build.sourceEncoding}</encoding>
           </configuration>
         </plugin>
       </plugins>

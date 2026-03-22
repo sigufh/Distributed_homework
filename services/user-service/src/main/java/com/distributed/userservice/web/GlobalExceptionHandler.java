@@ -1,6 +1,8 @@
 package com.distributed.userservice.web;
 
-import jakarta.servlet.http.HttpServletRequest;
+import com.distributed.userservice.exception.BizException;
+import io.jsonwebtoken.JwtException;
+import jakarta.validation.ConstraintViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -12,13 +14,16 @@ import java.util.stream.Collectors;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
-    @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<ApiResponse<Object>> handleIllegalArgument(
-            IllegalArgumentException ex,
-            HttpServletRequest request
-    ) {
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                .body(ApiResponse.fail(400, ex.getMessage()));
+    @ExceptionHandler(BizException.class)
+    public ResponseEntity<ApiResponse<Object>> handleBiz(BizException ex) {
+        return ResponseEntity.status(ex.getStatus())
+                .body(ApiResponse.fail(ex.getCode(), ex.getMessage()));
+    }
+
+    @ExceptionHandler(JwtException.class)
+    public ResponseEntity<ApiResponse<Object>> handleJwt(JwtException ex) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(ApiResponse.fail(401, "invalid or expired token"));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
@@ -32,10 +37,21 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.fail(400, msg));
     }
 
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ResponseEntity<ApiResponse<Object>> handleConstraint(ConstraintViolationException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.fail(400, ex.getMessage()));
+    }
+
+    @ExceptionHandler(IllegalStateException.class)
+    public ResponseEntity<ApiResponse<Object>> handleIllegalState(IllegalStateException ex) {
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(ApiResponse.fail(500, ex.getMessage()));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Object>> handleUnknown(Exception ex) {
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(ApiResponse.fail(500, "服务器异常"));
+                .body(ApiResponse.fail(500, "internal server error"));
     }
 }
-

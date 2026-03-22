@@ -9,4 +9,3 @@ public interface UserService {
 
     UserDO getById(long userId);
 }
-

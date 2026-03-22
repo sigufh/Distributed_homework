@@ -1,6 +1,7 @@
 package com.distributed.userservice.web;
 
 import com.distributed.userservice.domain.UserDO;
+import com.distributed.userservice.exception.BizException;
 import com.distributed.userservice.security.JwtService;
 import com.distributed.userservice.service.UserService;
 import com.distributed.userservice.web.dto.LoginRequest;
@@ -9,8 +10,13 @@ import com.distributed.userservice.web.dto.RegisterRequest;
 import io.jsonwebtoken.Claims;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 import java.util.Map;
 
@@ -33,7 +39,6 @@ public class UserController {
                 request.getPhone(),
                 request.getEmail()
         );
-        // 注册后直接登录返回 token，方便前端无缝接入
         String token = userService.login(request.getUsername(), request.getPassword());
         return ResponseEntity.ok(ApiResponse.ok(Map.of("userId", userId, "token", token)));
     }
@@ -52,12 +57,7 @@ public class UserController {
 
     @GetMapping("/me")
     public ResponseEntity<ApiResponse<MeResponse>> me(HttpServletRequest request) {
-        String authHeader = request.getHeader("Authorization");
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-            throw new IllegalArgumentException("未登录或 token 无效");
-        }
-        String token = authHeader.substring("Bearer ".length());
-        Claims claims = jwtService.parseClaims(token);
+        Claims claims = jwtService.parseClaims(extractBearerToken(request));
         long userId = Long.parseLong(claims.getSubject());
 
         UserDO user = userService.getById(userId);
@@ -68,5 +68,12 @@ public class UserController {
         resp.setEmail(user.getEmail());
         return ResponseEntity.ok(ApiResponse.ok(resp));
     }
-}
 
+    private String extractBearerToken(HttpServletRequest request) {
+        String authHeader = request.getHeader("Authorization");
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            throw new BizException(401, HttpStatus.UNAUTHORIZED, "missing bearer token");
+        }
+        return authHeader.substring("Bearer ".length());
+    }
+}

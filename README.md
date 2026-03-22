@@ -85,7 +85,7 @@ flowchart LR
 
 ```mermaid
 erDiagram
-  USERS ||--o{ ORDERS : places
+  USERS ||--o{ ORDERS : places}
   PRODUCTS ||--o{ INVENTORIES : has
   PRODUCTS ||--o{ ORDERS : referenced
 
@@ -153,31 +153,64 @@ erDiagram
 - **Maven**：3.9+
 - **Docker Desktop**：用于启动 MySQL/Redis
 
-启动依赖：
-1. `docker compose up -d`
-2. 启动 `services/user-service`（IDE 或 `mvn -pl services/user-service spring-boot:run`）
-
 ---
 
 ## 当前实现进度
-- 已规划：多服务拆分、API、ER、选型
-- 即将落地：**项目代码框架 + 用户注册/登录（user-service）**
+- 已完成：`user-service`、`product-service`、`inventory-service`、`order-service` 四个服务骨架与 API 落地
+- 已完成：MyBatis + Flyway 初始化脚本（users/products/inventories/orders）
+- 已完成：统一响应结构 `{"code":0,"message":"OK","data":...}`
 
 ---
 
-## user-service 快速启动（本地）
+## 当前代码快速启动（四服务）
 
-### 1. 启动依赖
-确保安装了 Docker Desktop，然后执行：
-1. `docker compose up -d`
+### 1. 启动依赖（MySQL + Redis）
+默认方式（本机 `3306` 空闲）：
+1. `docker compose up -d mysql redis`
 
-### 2. 启动服务
-在仓库根目录执行（使用内置 `mvnw` 自动下载 Maven）：
-1. `bash mvnw -pl services/user-service spring-boot:run`
+如果本机 `3306` 被占用，可改用 `3307`（Windows PowerShell）：
+1. `docker run -d --name seckill-mysql-3307 -e MYSQL_ROOT_PASSWORD=root -e MYSQL_DATABASE=seckill -e MYSQL_USER=seckill -e MYSQL_PASSWORD=seckill -e TZ=Asia/Shanghai -p 3307:3306 mysql:8.0 --character-set-server=utf8mb4 --collation-server=utf8mb4_0900_ai_ci --default-authentication-plugin=mysql_native_password`
+2. `docker compose up -d redis`
 
-服务默认端口：`8081`
+### 2. 配置环境变量
+在启动服务前设置（`user-service` 与 `order-service` 必须使用同一 JWT 密钥）：
 
-### 3. 测试接口
+```powershell
+$env:DB_URL="jdbc:mysql://localhost:3306/seckill?useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true"
+$env:DB_USERNAME="seckill"
+$env:DB_PASSWORD="seckill"
+$env:APP_JWT_SECRET="change-me-to-a-long-random-secret-at-least-32-bytes"
+```
+
+若你使用 `3307`，把 `DB_URL` 改成：
+```powershell
+$env:DB_URL="jdbc:mysql://localhost:3307/seckill?useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true"
+```
+
+### 3. 编译
+1. `mvn -DskipTests package`
+
+### 4. 分别启动 4 个服务（建议四个终端）
+1. `mvn -pl services/user-service spring-boot:run`
+2. `mvn -pl services/product-service spring-boot:run`
+3. `mvn -pl services/inventory-service spring-boot:run`
+4. `mvn -pl services/order-service spring-boot:run`
+
+端口：
+- `user-service`: `8081`
+- `product-service`: `8082`
+- `inventory-service`: `8083`
+- `order-service`: `8084`
+
+### 5. 打开内置前端页面
+启动 `user-service` 后，浏览器访问：
+1. `http://localhost:8081/`
+
+页面位置：
+1. `services/user-service/src/main/resources/static/index.html`
+
+### 6. 快速自检接口
+
 注册：
 ```bash
 curl -s -X POST "http://localhost:8081/api/v1/users/register" \
@@ -196,5 +229,26 @@ curl -s -X POST "http://localhost:8081/api/v1/users/login" \
 ```bash
 curl -s -X GET "http://localhost:8081/api/v1/users/me" \
   -H "Authorization: Bearer <token>"
+```
+
+创建商品：
+```bash
+curl -s -X POST "http://localhost:8082/api/v1/products" \
+  -H "Content-Type: application/json" \
+  -d '{"title":"iPhone 15","skuCode":"SKU-IP15-001","price":5999.00,"status":1}'
+```
+
+查询库存：
+```bash
+curl -s -X GET "http://localhost:8083/api/v1/inventories/10001"
+```
+
+创建订单（需要登录 token + 幂等键）：
+```bash
+curl -s -X POST "http://localhost:8084/api/v1/orders" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <token>" \
+  -H "Idempotency-Key: create-order-demo-001" \
+  -d '{"productId":1,"quantity":1,"amount":5999.00}'
 ```
 

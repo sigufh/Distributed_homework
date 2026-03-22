@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Seckill Console</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="bg-shape shape-a"></div>
+  <div class="bg-shape shape-b"></div>
+
+  <main class="page">
+    <header class="hero">
+      <h1>Seckill Service Console</h1>
+      <p>Quick UI for user, product, inventory, and order APIs.</p>
+    </header>
+
+    <section class="panel">
+      <h2>Gateway Config</h2>
+      <div class="grid two">
+        <label>
+          User URL
+          <input id="userBase" value="http://localhost:8081" />
+        </label>
+        <label>
+          Product URL
+          <input id="productBase" value="http://localhost:8082" />
+        </label>
+        <label>
+          Inventory URL
+          <input id="inventoryBase" value="http://localhost:8083" />
+        </label>
+        <label>
+          Order URL
+          <input id="orderBase" value="http://localhost:8084" />
+        </label>
+      </div>
+      <label>
+        JWT Token
+        <input id="token" placeholder="Bearer token without Bearer prefix" />
+      </label>
+    </section>
+
+    <section class="panel">
+      <h2>User</h2>
+      <div class="grid three">
+        <label>Username<input id="regUsername" value="alice" /></label>
+        <label>Password<input id="regPassword" value="Passw0rd!" /></label>
+        <label>Phone<input id="regPhone" value="13800000000" /></label>
+      </div>
+      <div class="grid two">
+        <label>Email<input id="regEmail" value="alice@example.com" /></label>
+      </div>
+      <div class="actions">
+        <button id="registerBtn">Register</button>
+        <button id="loginBtn">Login</button>
+        <button id="meBtn">Me</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Product</h2>
+      <div class="grid three">
+        <label>Title<input id="productTitle" value="iPhone 15" /></label>
+        <label>Sku Code<input id="productSku" value="SKU-IP15-001" /></label>
+        <label>Price<input id="productPrice" value="5999.00" /></label>
+      </div>
+      <div class="grid three">
+        <label>Status<input id="productStatus" value="1" /></label>
+        <label>Product Id<input id="productId" value="1" /></label>
+        <label>Keyword<input id="productKeyword" value="" /></label>
+      </div>
+      <div class="actions">
+        <button id="createProductBtn">Create Product</button>
+        <button id="listProductBtn">List Products</button>
+        <button id="getProductBtn">Get Product</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Inventory</h2>
+      <div class="grid two">
+        <label>Sku Id<input id="skuId" value="10001" /></label>
+        <label>Quantity<input id="invQty" value="1" /></label>
+      </div>
+      <div class="actions">
+        <button id="getInventoryBtn">Get Inventory</button>
+        <button id="reserveBtn">Reserve</button>
+        <button id="commitBtn">Commit</button>
+        <button id="releaseBtn">Release</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Order</h2>
+      <div class="grid three">
+        <label>Product Id<input id="orderProductId" value="1" /></label>
+        <label>Quantity<input id="orderQty" value="1" /></label>
+        <label>Amount<input id="orderAmount" value="5999.00" /></label>
+      </div>
+      <div class="grid two">
+        <label>Idempotency Key<input id="idempotencyKey" value="create-order-demo-001" /></label>
+        <label>Order Id<input id="orderId" value="1" /></label>
+      </div>
+      <div class="actions">
+        <button id="createOrderBtn">Create Order</button>
+        <button id="listOrderBtn">List My Orders</button>
+        <button id="getOrderBtn">Get Order</button>
+        <button id="cancelOrderBtn">Cancel Order</button>
+      </div>
+    </section>
+
+    <section class="panel output">
+      <h2>Response</h2>
+      <pre id="output">Ready.</pre>
+    </section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>

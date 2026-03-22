@@ -1,0 +1,11 @@
+D:\Distributedworks\Distributed_homework\services\inventory-service\src\main\java\com\distributed\inventoryservice\config\CorsConfig.java
+D:\Distributedworks\Distributed_homework\services\inventory-service\src\main\java\com\distributed\inventoryservice\domain\InventoryDO.java
+D:\Distributedworks\Distributed_homework\services\inventory-service\src\main\java\com\distributed\inventoryservice\exception\BizException.java
+D:\Distributedworks\Distributed_homework\services\inventory-service\src\main\java\com\distributed\inventoryservice\InventoryServiceApplication.java
+D:\Distributedworks\Distributed_homework\services\inventory-service\src\main\java\com\distributed\inventoryservice\mapper\InventoryMapper.java
+D:\Distributedworks\Distributed_homework\services\inventory-service\src\main\java\com\distributed\inventoryservice\service\impl\InventoryServiceImpl.java
+D:\Distributedworks\Distributed_homework\services\inventory-service\src\main\java\com\distributed\inventoryservice\service\InventoryService.java
+D:\Distributedworks\Distributed_homework\services\inventory-service\src\main\java\com\distributed\inventoryservice\web\ApiResponse.java
+D:\Distributedworks\Distributed_homework\services\inventory-service\src\main\java\com\distributed\inventoryservice\web\dto\QuantityRequest.java
+D:\Distributedworks\Distributed_homework\services\inventory-service\src\main\java\com\distributed\inventoryservice\web\GlobalExceptionHandler.java
+D:\Distributedworks\Distributed_homework\services\inventory-service\src\main\java\com\distributed\inventoryservice\web\InventoryController.java
