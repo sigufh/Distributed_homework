@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>搜索商品 - 云市集</title>
+    <link rel="stylesheet" href="/assets/styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <a href="/" class="brand">云市集</a>
+      <nav class="site-nav">
+        <a href="/">首页</a>
+        <a href="/search.html">搜索</a>
+      </nav>
+      <form id="global-search" class="search-bar" role="search">
+        <input
+          id="global-search-input"
+          type="search"
+          placeholder="输入关键词，回车搜索"
+          aria-label="搜索商品"
+        />
+        <button type="submit">搜索</button>
+      </form>
+    </header>
+
+    <main class="page">
+      <section class="section-head">
+        <h1 id="search-title">搜索结果</h1>
+        <p id="search-meta" class="subtle-text"></p>
+      </section>
+      <section id="search-grid" class="product-grid"></section>
+    </main>
+
+    <footer class="site-footer">
+      <p>云市集 · 商品搜索</p>
+    </footer>
+
+    <script src="/assets/store.js"></script>
+    <script>
+      const { api, ui, navigateToSearch, getParam } = window.StoreUI;
+      const searchForm = document.getElementById("global-search");
+      const searchInput = document.getElementById("global-search-input");
+      const title = document.getElementById("search-title");
+      const meta = document.getElementById("search-meta");
+      const grid = document.getElementById("search-grid");
+
+      searchForm.addEventListener("submit", (event) => {
+        event.preventDefault();
+        navigateToSearch(searchInput.value);
+      });
+
+      async function runSearch() {
+        const keyword = (getParam("q") || "").trim();
+        searchInput.value = keyword;
+        if (!keyword) {
+          title.textContent = "输入关键词开始搜索";
+          meta.textContent = "示例：Redis、分布式、系统";
+          grid.innerHTML = "";
+          return;
+        }
+
+        title.textContent = `“${keyword}” 的搜索结果`;
+        grid.innerHTML = `
+          <article class="product-card skeleton-card"></article>
+          <article class="product-card skeleton-card"></article>
+          <article class="product-card skeleton-card"></article>
+        `;
+
+        try {
+          const result = await api.searchProducts(keyword, 12);
+          meta.textContent = `共 ${result.list.length} 条，数据源：${result.source}`;
+          grid.innerHTML = result.list.length
+            ? result.list.map(ui.renderCard).join("")
+            : '<div class="empty-state">没有找到相关商品，请换个关键词。</div>';
+        } catch (err) {
+          meta.textContent = "";
+          grid.innerHTML = `<div class="empty-state">${ui.escapeHtml(
+            err.message || "搜索失败"
+          )}</div>`;
+        }
+      }
+
+      runSearch();
+    </script>
+  </body>
+</html>

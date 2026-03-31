@@ -1,12 +1,103 @@
-version: "3.8"
-
 services:
+  # [要求1] Redis 缓存服务
   redis:
     image: redis:7-alpine
     container_name: redis
     ports:
       - "6379:6379"
 
+  # [要求3] MySQL 主库（写）
+  mysql-master:
+    image: mysql:8.0
+    container_name: mysql-master
+    command:
+      - "--server-id=1"
+      - "--log-bin=mysql-bin"
+      - "--binlog-format=ROW"
+      - "--gtid-mode=ON"
+      - "--enforce-gtid-consistency=ON"
+    environment:
+      - MYSQL_ROOT_PASSWORD=root123456
+      - MYSQL_DATABASE=shop
+      - MYSQL_USER=app_user
+      - MYSQL_PASSWORD=app_pass123
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_master_data:/var/lib/mysql
+      - ./mysql/master/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-proot123456"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  # [要求3] MySQL 从库（读）
+  mysql-replica:
+    image: mysql:8.0
+    container_name: mysql-replica
+    depends_on:
+      mysql-master:
+        condition: service_healthy
+    command:
+      - "--server-id=2"
+      - "--relay-log=mysql-relay-bin"
+      - "--read-only=ON"
+      - "--skip-slave-start=1"
+      - "--gtid-mode=ON"
+      - "--enforce-gtid-consistency=ON"
+    environment:
+      - MYSQL_ROOT_PASSWORD=root123456
+    ports:
+      - "3308:3306"
+    volumes:
+      - mysql_replica_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-proot123456"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  # [要求3] 自动初始化主从复制关系
+  mysql-replica-setup:
+    image: mysql:8.0
+    container_name: mysql-replica-setup
+    depends_on:
+      mysql-master:
+        condition: service_healthy
+      mysql-replica:
+        condition: service_healthy
+    restart: "no"
+    command: >
+      sh -c "
+      set -e;
+      echo '[replica-setup] waiting mysql services...';
+      until mysql -hmysql-master -uroot -proot123456 -e 'SELECT 1' >/dev/null 2>&1; do sleep 2; done;
+      until mysql -hmysql-replica -uroot -proot123456 -e 'SELECT 1' >/dev/null 2>&1; do sleep 2; done;
+      MASTER_STATUS=$$(mysql -hmysql-master -uroot -proot123456 -Nse 'SHOW MASTER STATUS');
+      LOG_FILE=$$(echo $$MASTER_STATUS | awk '{print $$1}');
+      LOG_POS=$$(echo $$MASTER_STATUS | awk '{print $$2}');
+      if [ -z \"$$LOG_FILE\" ] || [ -z \"$$LOG_POS\" ]; then
+        echo '[replica-setup] failed to get master status';
+        exit 1;
+      fi;
+      mysql -hmysql-replica -uroot -proot123456 -e \"
+        STOP REPLICA;
+        RESET REPLICA ALL;
+        CHANGE REPLICATION SOURCE TO
+          SOURCE_HOST='mysql-master',
+          SOURCE_PORT=3306,
+          SOURCE_USER='repl_user',
+          SOURCE_PASSWORD='repl_pass123',
+          SOURCE_LOG_FILE='$$LOG_FILE',
+          SOURCE_LOG_POS=$$LOG_POS,
+          SOURCE_CONNECT_RETRY=5;
+        START REPLICA;
+      \";
+      echo '[replica-setup] replication configured';
+      "
+
+  # 后端实例统一开启：Redis 缓存 + MySQL 读写分离 + 可选 ES
   backend1:
     build:
       context: .
@@ -17,8 +108,25 @@ services:
     environment:
       - PORT=8081
       - REDIS_HOST=redis
+      - MYSQL_ENABLED=true
+      - MYSQL_WRITE_HOST=mysql-master
+      - MYSQL_READ_HOSTS=mysql-replica
+      - MYSQL_PORT=3306
+      - MYSQL_DATABASE=shop
+      - MYSQL_USER=app_user
+      - MYSQL_PASSWORD=app_pass123
+      - ES_ENABLED=${ES_ENABLED:-false}
+      - ES_HOST=http://elasticsearch:9200
+      - ES_INDEX=products
     depends_on:
-      - redis
+      redis:
+        condition: service_started
+      mysql-master:
+        condition: service_healthy
+      mysql-replica:
+        condition: service_healthy
+      mysql-replica-setup:
+        condition: service_completed_successfully
 
   backend2:
     build:
@@ -30,8 +138,25 @@ services:
     environment:
       - PORT=8082
       - REDIS_HOST=redis
+      - MYSQL_ENABLED=true
+      - MYSQL_WRITE_HOST=mysql-master
+      - MYSQL_READ_HOSTS=mysql-replica
+      - MYSQL_PORT=3306
+      - MYSQL_DATABASE=shop
+      - MYSQL_USER=app_user
+      - MYSQL_PASSWORD=app_pass123
+      - ES_ENABLED=${ES_ENABLED:-false}
+      - ES_HOST=http://elasticsearch:9200
+      - ES_INDEX=products
     depends_on:
-      - redis
+      redis:
+        condition: service_started
+      mysql-master:
+        condition: service_healthy
+      mysql-replica:
+        condition: service_healthy
+      mysql-replica-setup:
+        condition: service_completed_successfully
 
   backend3:
     build:
@@ -43,8 +168,25 @@ services:
     environment:
       - PORT=8083
       - REDIS_HOST=redis
+      - MYSQL_ENABLED=true
+      - MYSQL_WRITE_HOST=mysql-master
+      - MYSQL_READ_HOSTS=mysql-replica
+      - MYSQL_PORT=3306
+      - MYSQL_DATABASE=shop
+      - MYSQL_USER=app_user
+      - MYSQL_PASSWORD=app_pass123
+      - ES_ENABLED=${ES_ENABLED:-false}
+      - ES_HOST=http://elasticsearch:9200
+      - ES_INDEX=products
     depends_on:
-      - redis
+      redis:
+        condition: service_started
+      mysql-master:
+        condition: service_healthy
+      mysql-replica:
+        condition: service_healthy
+      mysql-replica-setup:
+        condition: service_completed_successfully
 
   backend4:
     build:
@@ -56,18 +198,56 @@ services:
     environment:
       - PORT=8084
       - REDIS_HOST=redis
+      - MYSQL_ENABLED=true
+      - MYSQL_WRITE_HOST=mysql-master
+      - MYSQL_READ_HOSTS=mysql-replica
+      - MYSQL_PORT=3306
+      - MYSQL_DATABASE=shop
+      - MYSQL_USER=app_user
+      - MYSQL_PASSWORD=app_pass123
+      - ES_ENABLED=${ES_ENABLED:-false}
+      - ES_HOST=http://elasticsearch:9200
+      - ES_INDEX=products
     depends_on:
-      - redis
+      redis:
+        condition: service_started
+      mysql-master:
+        condition: service_healthy
+      mysql-replica:
+        condition: service_healthy
+      mysql-replica-setup:
+        condition: service_completed_successfully
 
+  # 前端与 API 网关
   nginx:
     image: nginx:1.27-alpine
     container_name: nginx
     ports:
       - "80:80"
     depends_on:
-      - backend1
-      - backend2
+      backend1:
+        condition: service_started
+      backend2:
+        condition: service_started
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./public:/usr/share/nginx/html:ro
 
+  # [要求5-可选] ElasticSearch 搜索服务（按 profile 启动）
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.14.3
+    container_name: elasticsearch
+    profiles: ["search"]
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    ports:
+      - "9200:9200"
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+
+volumes:
+  mysql_master_data:
+  mysql_replica_data:
+  es_data:
