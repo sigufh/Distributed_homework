@@ -12,6 +12,10 @@
       <nav class="site-nav">
         <a href="/">首页</a>
         <a href="/search.html">搜索</a>
+        <a href="/cart.html" class="cart-link"
+          >购物车<span id="cart-count" class="cart-badge">0</span></a
+        >
+        <a href="/orders.html">我的订单</a>
       </nav>
       <form id="global-search" class="search-bar" role="search">
         <input
@@ -22,18 +26,25 @@
         />
         <button type="submit">搜索</button>
       </form>
+      <div class="user-box">
+        <input id="user-id-input" type="number" min="1" placeholder="用户ID" />
+        <button id="save-user-id-btn" type="button">保存</button>
+      </div>
     </header>
 
     <main class="page">
       <section class="hero">
-        <p class="eyebrow">分布式商城演示</p>
-        <h1>更快加载的商品详情页</h1>
-        <p>商品详情由 Redis 缓存支撑，后端使用 MySQL 读写分离，确保访问稳定且响应迅速。</p>
-        <a href="/search.html?q=Redis" class="hero-action">立即搜索热词</a>
+        <p class="eyebrow">秒杀专场已开启</p>
+        <h1>秒杀、下单、购物车一体化流程</h1>
+        <p>
+          当前站点支持商品详情、购物车管理、秒杀下单、异步订单创建与订单查询。
+          输入用户ID后，可以直接在商品卡片上发起秒杀。
+        </p>
+        <a href="/search.html?q=Redis" class="hero-action">立即去抢热门商品</a>
       </section>
 
       <section class="section-head">
-        <h2>精选商品</h2>
+        <h2>秒杀商品</h2>
         <a href="/search.html?q=系统" class="text-link">查看更多</a>
       </section>
 
@@ -45,32 +56,84 @@
     </main>
 
     <footer class="site-footer">
-      <p>云市集 · Distributed Homework Demo</p>
+      <p>云市集 · 秒杀系统演示</p>
     </footer>
+    <div id="toast-root"></div>
 
     <script src="/assets/store.js"></script>
     <script>
-      const { api, ui, navigateToSearch } = window.StoreUI;
+      const {
+        api,
+        ui,
+        navigateToSearch,
+        navigateToDetail,
+        getUserId,
+        addToCart,
+        setHeaderCartCount,
+        bindHeaderUserSave,
+        showToast,
+      } = window.StoreUI;
 
       const searchForm = document.getElementById("global-search");
       const searchInput = document.getElementById("global-search-input");
+      const featuredGrid = document.getElementById("featured-grid");
+      const productMap = new Map();
+
       searchForm.addEventListener("submit", (event) => {
         event.preventDefault();
         navigateToSearch(searchInput.value);
       });
 
+      bindHeaderUserSave();
+      setHeaderCartCount();
+
       async function loadFeatured() {
         const ids = [1, 2, 3];
-        const holder = document.getElementById("featured-grid");
         try {
           const products = await Promise.all(ids.map((id) => api.getProduct(id)));
-          holder.innerHTML = products.map(ui.renderCard).join("");
+          products.forEach((p) => productMap.set(Number(p.id), p));
+          featuredGrid.innerHTML = products.map((p) => ui.renderCard(p)).join("");
         } catch (err) {
-          holder.innerHTML = `<div class="empty-state">${ui.escapeHtml(
+          featuredGrid.innerHTML = `<div class="empty-state">${ui.escapeHtml(
             err.message || "加载失败"
           )}</div>`;
         }
       }
+
+      async function onGridClick(event) {
+        const button = event.target.closest("button[data-id]");
+        if (!button) return;
+        const productId = Number(button.dataset.id);
+        const product = productMap.get(productId) || (await api.getProduct(productId));
+        productMap.set(productId, product);
+
+        if (button.classList.contains("btn-open-detail")) {
+          navigateToDetail(productId);
+          return;
+        }
+
+        if (button.classList.contains("btn-add-cart")) {
+          addToCart(product, 1);
+          setHeaderCartCount();
+          showToast(`已加入购物车：${product.name}`);
+          return;
+        }
+
+        if (button.classList.contains("btn-seckill")) {
+          const userId = getUserId();
+          const result = await api.placeSeckillOrderSafe(userId, productId);
+          if (result.ok) {
+            showToast(`秒杀请求已提交，订单号 ${result.payload.data.orderId}`);
+          } else {
+            const msg = result.payload?.msg || "秒杀失败";
+            showToast(msg, "error");
+          }
+        }
+      }
+
+      featuredGrid.addEventListener("click", (event) => {
+        onGridClick(event).catch((err) => showToast(err.message || "操作失败", "error"));
+      });
 
       loadFeatured();
     </script>

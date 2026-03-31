@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>我的订单 - 云市集</title>
+    <link rel="stylesheet" href="/assets/styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <a href="/" class="brand">云市集</a>
+      <nav class="site-nav">
+        <a href="/">首页</a>
+        <a href="/search.html">搜索</a>
+        <a href="/cart.html" class="cart-link"
+          >购物车<span id="cart-count" class="cart-badge">0</span></a
+        >
+        <a href="/orders.html">我的订单</a>
+      </nav>
+      <form id="global-search" class="search-bar" role="search">
+        <input
+          id="global-search-input"
+          type="search"
+          placeholder="搜索商品"
+          aria-label="搜索商品"
+        />
+        <button type="submit">搜索</button>
+      </form>
+      <div class="user-box">
+        <input id="user-id-input" type="number" min="1" placeholder="用户ID" />
+        <button id="save-user-id-btn" type="button">保存</button>
+      </div>
+    </header>
+
+    <main class="page">
+      <section class="split-grid">
+        <article class="block-card">
+          <h2>按用户查询订单</h2>
+          <div class="action-row">
+            <button id="btn-load-user-orders" type="button">查询我的订单</button>
+          </div>
+          <p class="subtle-text">将使用顶部保存的用户ID调用 `/api/users/{userId}/orders`。</p>
+        </article>
+        <article class="block-card">
+          <h2>按订单号查询</h2>
+          <div class="qty-row">
+            <input id="order-id-input" type="text" placeholder="输入订单号" />
+            <button id="btn-load-order" type="button">查询订单</button>
+          </div>
+        </article>
+      </section>
+
+      <section class="section-head">
+        <h2>订单列表</h2>
+      </section>
+      <section id="order-list" class="order-list"></section>
+    </main>
+
+    <footer class="site-footer">
+      <p>云市集 · 订单查询</p>
+    </footer>
+    <div id="toast-root"></div>
+
+    <script src="/assets/store.js"></script>
+    <script>
+      const {
+        api,
+        ui,
+        navigateToSearch,
+        bindHeaderUserSave,
+        setHeaderCartCount,
+        getUserId,
+        showToast,
+      } = window.StoreUI;
+
+      const searchForm = document.getElementById("global-search");
+      const searchInput = document.getElementById("global-search-input");
+      const orderList = document.getElementById("order-list");
+      const orderIdInput = document.getElementById("order-id-input");
+
+      searchForm.addEventListener("submit", (event) => {
+        event.preventDefault();
+        navigateToSearch(searchInput.value);
+      });
+
+      bindHeaderUserSave();
+      setHeaderCartCount();
+
+      function statusClass(status) {
+        const s = String(status || "").toUpperCase();
+        if (s.includes("PENDING")) return "status-chip pending";
+        if (s.includes("FAIL") || s.includes("SOLD_OUT") || s.includes("DUPLICATE")) {
+          return "status-chip failed";
+        }
+        return "status-chip";
+      }
+
+      function renderOrderCard(order) {
+        return `
+          <article class="order-card">
+            <p><strong>订单号：</strong>${ui.escapeHtml(order.orderId || "-")}</p>
+            <p><strong>用户：</strong>${ui.escapeHtml(order.userId || "-")} / <strong>商品：</strong>${
+          ui.escapeHtml(order.productId || "-")
+        }</p>
+            <p><strong>商品名：</strong>${ui.escapeHtml(order.productName || "-")}</p>
+            <p><strong>金额：</strong>${ui.money(order.amount || 0)}</p>
+            <p><strong>状态：</strong><span class="${statusClass(order.status)}">${ui.escapeHtml(
+          order.status || "UNKNOWN"
+        )}</span></p>
+            <p><strong>创建时间：</strong>${ui.escapeHtml(order.createdAt || "-")}</p>
+            <div class="action-row">
+              <button class="tiny ghost btn-check-seckill" data-order-id="${ui.escapeHtml(
+                order.orderId || ""
+              )}">查秒杀状态</button>
+            </div>
+          </article>
+        `;
+      }
+
+      async function loadOrdersByUser() {
+        const userId = getUserId();
+        const list = await api.listOrdersByUser(userId, 50);
+        orderList.innerHTML = list.length
+          ? list.map(renderOrderCard).join("")
+          : '<div class="empty-state">当前用户暂无订单</div>';
+      }
+
+      async function loadOrderById() {
+        const orderId = String(orderIdInput.value || "").trim();
+        if (!orderId) {
+          showToast("请先输入订单号", "error");
+          return;
+        }
+        const order = await api.getOrderById(orderId);
+        orderList.innerHTML = renderOrderCard(order);
+      }
+
+      async function checkSeckillStatus(orderId) {
+        const result = await api.getSeckillResultByOrder(orderId);
+        showToast(`订单 ${orderId} 秒杀状态：${result.status || "未知"}`);
+      }
+
+      document.getElementById("btn-load-user-orders").addEventListener("click", () => {
+        loadOrdersByUser().catch((err) => showToast(err.message || "查询失败", "error"));
+      });
+
+      document.getElementById("btn-load-order").addEventListener("click", () => {
+        loadOrderById().catch((err) => showToast(err.message || "查询失败", "error"));
+      });
+
+      orderList.addEventListener("click", (event) => {
+        const btn = event.target.closest(".btn-check-seckill");
+        if (!btn) return;
+        checkSeckillStatus(btn.dataset.orderId).catch((err) =>
+          showToast(err.message || "查询失败", "error")
+        );
+      });
+
+      loadOrdersByUser().catch((err) => showToast(err.message || "查询失败", "error"));
+    </script>
+  </body>
+</html>

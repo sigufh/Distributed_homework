@@ -12,6 +12,10 @@
       <nav class="site-nav">
         <a href="/">首页</a>
         <a href="/search.html">搜索</a>
+        <a href="/cart.html" class="cart-link"
+          >购物车<span id="cart-count" class="cart-badge">0</span></a
+        >
+        <a href="/orders.html">我的订单</a>
       </nav>
       <form id="global-search" class="search-bar" role="search">
         <input
@@ -22,6 +26,10 @@
         />
         <button type="submit">搜索</button>
       </form>
+      <div class="user-box">
+        <input id="user-id-input" type="number" min="1" placeholder="用户ID" />
+        <button id="save-user-id-btn" type="button">保存</button>
+      </div>
     </header>
 
     <main class="page">
@@ -33,22 +41,39 @@
     </main>
 
     <footer class="site-footer">
-      <p>云市集 · 商品搜索</p>
+      <p>云市集 · 搜索与下单</p>
     </footer>
+    <div id="toast-root"></div>
 
     <script src="/assets/store.js"></script>
     <script>
-      const { api, ui, navigateToSearch, getParam } = window.StoreUI;
+      const {
+        api,
+        ui,
+        getParam,
+        getUserId,
+        addToCart,
+        navigateToSearch,
+        navigateToDetail,
+        bindHeaderUserSave,
+        setHeaderCartCount,
+        showToast,
+      } = window.StoreUI;
+
       const searchForm = document.getElementById("global-search");
       const searchInput = document.getElementById("global-search-input");
       const title = document.getElementById("search-title");
       const meta = document.getElementById("search-meta");
       const grid = document.getElementById("search-grid");
+      const productMap = new Map();
 
       searchForm.addEventListener("submit", (event) => {
         event.preventDefault();
         navigateToSearch(searchInput.value);
       });
+
+      bindHeaderUserSave();
+      setHeaderCartCount();
 
       async function runSearch() {
         const keyword = (getParam("q") || "").trim();
@@ -68,10 +93,11 @@
         `;
 
         try {
-          const result = await api.searchProducts(keyword, 12);
+          const result = await api.searchProducts(keyword, 24);
+          result.list.forEach((p) => productMap.set(Number(p.id), p));
           meta.textContent = `共 ${result.list.length} 条，数据源：${result.source}`;
           grid.innerHTML = result.list.length
-            ? result.list.map(ui.renderCard).join("")
+            ? result.list.map((p) => ui.renderCard(p)).join("")
             : '<div class="empty-state">没有找到相关商品，请换个关键词。</div>';
         } catch (err) {
           meta.textContent = "";
@@ -80,6 +106,38 @@
           )}</div>`;
         }
       }
+
+      async function onGridClick(event) {
+        const button = event.target.closest("button[data-id]");
+        if (!button) return;
+        const pid = Number(button.dataset.id);
+        const product = productMap.get(pid) || (await api.getProduct(pid));
+        productMap.set(pid, product);
+
+        if (button.classList.contains("btn-open-detail")) {
+          navigateToDetail(pid);
+          return;
+        }
+        if (button.classList.contains("btn-add-cart")) {
+          addToCart(product, 1);
+          setHeaderCartCount();
+          showToast(`已加入购物车：${product.name}`);
+          return;
+        }
+        if (button.classList.contains("btn-seckill")) {
+          const userId = getUserId();
+          const result = await api.placeSeckillOrderSafe(userId, pid);
+          if (result.ok) {
+            showToast(`秒杀请求已提交，订单号 ${result.payload.data.orderId}`);
+          } else {
+            showToast(result.payload?.msg || "秒杀失败", "error");
+          }
+        }
+      }
+
+      grid.addEventListener("click", (event) => {
+        onGridClick(event).catch((err) => showToast(err.message || "操作失败", "error"));
+      });
 
       runSearch();
     </script>

@@ -12,6 +12,10 @@
       <nav class="site-nav">
         <a href="/">首页</a>
         <a href="/search.html">搜索</a>
+        <a href="/cart.html" class="cart-link"
+          >购物车<span id="cart-count" class="cart-badge">0</span></a
+        >
+        <a href="/orders.html">我的订单</a>
       </nav>
       <form id="global-search" class="search-bar" role="search">
         <input
@@ -22,6 +26,10 @@
         />
         <button type="submit">搜索</button>
       </form>
+      <div class="user-box">
+        <input id="user-id-input" type="number" min="1" placeholder="用户ID" />
+        <button id="save-user-id-btn" type="button">保存</button>
+      </div>
     </header>
 
     <main class="page">
@@ -32,7 +40,7 @@
       </section>
 
       <section class="section-head">
-        <h2>你可能还喜欢</h2>
+        <h2>你可能还想抢</h2>
       </section>
       <section id="related-grid" class="product-grid"></section>
     </main>
@@ -40,64 +48,161 @@
     <footer class="site-footer">
       <p>云市集 · 商品详情</p>
     </footer>
+    <div id="toast-root"></div>
 
     <script src="/assets/store.js"></script>
     <script>
-      const { api, ui, navigateToSearch, parseNumberParam } = window.StoreUI;
+      const {
+        api,
+        ui,
+        navigateToSearch,
+        navigateToDetail,
+        parseNumberParam,
+        getUserId,
+        addToCart,
+        setHeaderCartCount,
+        bindHeaderUserSave,
+        showToast,
+      } = window.StoreUI;
+
       const searchForm = document.getElementById("global-search");
       const searchInput = document.getElementById("global-search-input");
+      const detailPanel = document.getElementById("detail-panel");
+      const relatedGrid = document.getElementById("related-grid");
+      const productId = parseNumberParam("id", 1);
+      const productMap = new Map();
+      let currentProduct = null;
+      let latestOrderId = null;
 
       searchForm.addEventListener("submit", (event) => {
         event.preventDefault();
         navigateToSearch(searchInput.value);
       });
 
-      const productId = parseNumberParam("id", 1);
+      bindHeaderUserSave();
+      setHeaderCartCount();
 
       async function renderDetail() {
-        const panel = document.getElementById("detail-panel");
-        const related = document.getElementById("related-grid");
         try {
           const product = await api.getProduct(productId);
+          currentProduct = product;
+          productMap.set(Number(product.id), product);
           document.title = `${product.name} - 云市集`;
 
-          panel.innerHTML = `
+          detailPanel.innerHTML = `
             <article class="product-preview">
-              <div class="cover-art">
-                <span>${ui.escapeHtml(product.name.slice(0, 1))}</span>
-              </div>
+              <div class="cover-art"><span>${ui.escapeHtml(product.name.slice(0, 1))}</span></div>
             </article>
             <article class="product-meta">
               <p class="eyebrow">商品 ID ${product.id}</p>
               <h1>${ui.escapeHtml(product.name)}</h1>
               <p class="price">${ui.money(product.price)}</p>
               <p class="stock ${product.stock > 0 ? "in-stock" : "out-stock"}">
-                ${product.stock > 0 ? `库存 ${product.stock} 件` : "暂时缺货"}
+                ${product.stock > 0 ? `库存 ${product.stock} 件` : "已售罄"}
               </p>
-              <p class="description">
-                这本商品支持高并发详情访问，接口层具备缓存防护能力，可稳定应对热点读流量。
-              </p>
-              <div class="action-row">
-                <button type="button">立即购买</button>
-                <button type="button" class="ghost">加入收藏</button>
+              <p class="description">支持加入购物车与秒杀下单。秒杀请求会进入异步订单流水，结果可随时查询。</p>
+              <div class="qty-row">
+                <label for="buy-qty">加入数量</label>
+                <input id="buy-qty" type="number" min="1" value="1" />
               </div>
+              <div class="action-row">
+                <button id="btn-add-cart" type="button">加入购物车</button>
+                <button id="btn-seckill" type="button">立即秒杀</button>
+                <button id="btn-check-result" class="ghost" type="button">查询最新秒杀结果</button>
+              </div>
+              <div id="seckill-result" class="description" style="margin-top:10px;">尚未发起秒杀</div>
             </article>
           `;
-
-          const ids = [1, 2, 3].filter((id) => Number(id) !== Number(product.id));
-          const list = await Promise.all(ids.map((id) => api.getProduct(id)));
-          related.innerHTML = list.length
-            ? list.map(ui.renderCard).join("")
-            : '<div class="empty-state">暂无更多推荐商品</div>';
         } catch (err) {
-          panel.innerHTML = `<div class="empty-state">${ui.escapeHtml(
+          detailPanel.innerHTML = `<div class="empty-state">${ui.escapeHtml(
             err.message || "商品加载失败"
           )}</div>`;
-          related.innerHTML = "";
+          return;
+        }
+
+        const relatedIds = [1, 2, 3].filter((id) => id !== productId);
+        const related = await Promise.all(relatedIds.map((id) => api.getProduct(id)));
+        related.forEach((p) => productMap.set(Number(p.id), p));
+        relatedGrid.innerHTML = related.map((p) => ui.renderCard(p)).join("");
+      }
+
+      async function handleMainAction(event) {
+        if (!currentProduct) return;
+        const target = event.target;
+        if (!(target instanceof HTMLElement)) return;
+
+        if (target.id === "btn-add-cart") {
+          const qty = Number(document.getElementById("buy-qty").value || 1);
+          addToCart(currentProduct, Math.max(1, qty));
+          setHeaderCartCount();
+          showToast("已加入购物车");
+          return;
+        }
+
+        if (target.id === "btn-seckill") {
+          const userId = getUserId();
+          const result = await api.placeSeckillOrderSafe(userId, currentProduct.id);
+          const resultNode = document.getElementById("seckill-result");
+          if (result.ok) {
+            latestOrderId = result.payload.data.orderId;
+            resultNode.textContent = `秒杀请求已受理，订单号：${latestOrderId}`;
+            showToast(`秒杀请求成功，订单号 ${latestOrderId}`);
+          } else {
+            resultNode.textContent = result.payload?.msg || "秒杀失败";
+            showToast(resultNode.textContent, "error");
+          }
+          return;
+        }
+
+        if (target.id === "btn-check-result") {
+          if (!latestOrderId) {
+            showToast("当前没有可查询的订单号", "error");
+            return;
+          }
+          const data = await api.getSeckillResultByOrder(latestOrderId);
+          document.getElementById("seckill-result").textContent = `订单 ${latestOrderId} 当前状态：${
+            data.status || "未知"
+          }`;
         }
       }
 
-      renderDetail();
+      async function handleRelatedAction(event) {
+        const button = event.target.closest("button[data-id]");
+        if (!button) return;
+        const pid = Number(button.dataset.id);
+        const product = productMap.get(pid) || (await api.getProduct(pid));
+        productMap.set(pid, product);
+
+        if (button.classList.contains("btn-open-detail")) {
+          navigateToDetail(pid);
+          return;
+        }
+        if (button.classList.contains("btn-add-cart")) {
+          addToCart(product, 1);
+          setHeaderCartCount();
+          showToast(`已加入购物车：${product.name}`);
+          return;
+        }
+        if (button.classList.contains("btn-seckill")) {
+          const userId = getUserId();
+          const result = await api.placeSeckillOrderSafe(userId, pid);
+          if (result.ok) {
+            latestOrderId = result.payload.data.orderId;
+            showToast(`秒杀请求成功，订单号 ${latestOrderId}`);
+          } else {
+            showToast(result.payload?.msg || "秒杀失败", "error");
+          }
+        }
+      }
+
+      detailPanel.addEventListener("click", (event) => {
+        handleMainAction(event).catch((err) => showToast(err.message || "操作失败", "error"));
+      });
+      relatedGrid.addEventListener("click", (event) => {
+        handleRelatedAction(event).catch((err) => showToast(err.message || "操作失败", "error"));
+      });
+
+      renderDetail().catch((err) => showToast(err.message || "页面初始化失败", "error"));
     </script>
   </body>
 </html>

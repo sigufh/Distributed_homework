@@ -1,0 +1,43 @@
+﻿databaseName: shop_order
+
+dataSources:
+  ds_0:
+    dataSourceClassName: com.zaxxer.hikari.HikariDataSource
+    driverClassName: com.mysql.cj.jdbc.Driver
+    jdbcUrl: jdbc:mysql://mysql-order-0:3306/shop_order?serverTimezone=UTC&useSSL=false&allowPublicKeyRetrieval=true
+    username: app_user
+    password: app_pass123
+    maxPoolSize: 50
+  ds_1:
+    dataSourceClassName: com.zaxxer.hikari.HikariDataSource
+    driverClassName: com.mysql.cj.jdbc.Driver
+    jdbcUrl: jdbc:mysql://mysql-order-1:3306/shop_order?serverTimezone=UTC&useSSL=false&allowPublicKeyRetrieval=true
+    username: app_user
+    password: app_pass123
+    maxPoolSize: 50
+
+rules:
+  - !SHARDING
+    tables:
+      orders:
+        actualDataNodes: ds_${0..1}.orders_${0..1}
+        databaseStrategy:
+          standard:
+            shardingColumn: user_id
+            shardingAlgorithmName: orders-database-inline
+        tableStrategy:
+          standard:
+            shardingColumn: order_id
+            shardingAlgorithmName: orders-table-inline
+    shardingAlgorithms:
+      orders-database-inline:
+        type: INLINE
+        props:
+          algorithm-expression: ds_${user_id % 2}
+      orders-table-inline:
+        type: INLINE
+        props:
+          algorithm-expression: orders_${order_id % 2}
+
+props:
+  sql-show: false

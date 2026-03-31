@@ -1,0 +1,11 @@
+﻿mode:
+  type: Standalone
+
+authority:
+  users:
+    - app_user@%:app_pass123
+  privilege:
+    type: ALL_PERMITTED
+
+props:
+  sql-show: false

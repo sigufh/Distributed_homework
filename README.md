@@ -152,3 +152,64 @@ docker-compose down
 ```bash
 docker-compose down -v
 ```
+
+## 10. ÃëÉ±ÏÂµ¥£¨Redis + Kafka£©
+
+ÒÑĞÂÔöÃëÉ±ÄÜÁ¦£º
+
+- Redis Ô¤¿Û¿â´æ£¨Lua Ô­×Ó½Å±¾£©
+- Kafka Òì²½´´½¨¶©µ¥£¨Ï÷·åÌî¹È£©
+- Ñ©»¨Ëã·¨Éú³É¶©µ¥ ID£¨`SnowflakeIdGenerator`£©
+- ÃİµÈ¿ØÖÆ£ºÍ¬Ò»ÓÃ»§Í¬Ò»ÉÌÆ·Ö»ÄÜÏÂµ¥Ò»´Î
+- ×îÖÕÒ»ÖÂĞÔ£ºÏÂµ¥Ê§°Ü»á²¹³¥¿â´æ£¬²»»á³¬Âô
+
+ºËĞÄ½Ó¿Ú£º
+
+- `POST /api/seckill/place-order`  
+  body: `{ "userId": 1001, "productId": 1 }`
+- `GET /api/seckill/result?orderId=xxx`  
+  »ò `GET /api/seckill/result?userId=1001&productId=1`
+- `GET /api/orders/:orderId`
+- `GET /api/users/:userId/orders`
+- `POST /api/seckill/stock/sync`£¨È«Á¿Í¬²½ÃëÉ±¿â´æ»º´æ£©
+- `POST /api/seckill/stock/sync/:productId`£¨µ¥ÉÌÆ·Í¬²½£©
+
+## 11. åˆ†åº“åˆ†è¡¨ï¼ˆShardingSphere-Proxyï¼Œé€‰åšï¼‰
+
+å·²æä¾›è®¢å•åˆ†åº“åˆ†è¡¨å®ç°ï¼š
+
+- åˆ†åº“ç­–ç•¥ï¼šæŒ‰ `user_id % 2` è·¯ç”±åˆ° `ds_0 / ds_1`
+- åˆ†è¡¨ç­–ç•¥ï¼šæŒ‰ `order_id % 2` è·¯ç”±åˆ° `orders_0 / orders_1`
+- é€»è¾‘è¡¨åï¼š`orders`
+
+ç›¸å…³é…ç½®æ–‡ä»¶ï¼š
+
+- `shardingsphere-proxy/conf/server.yaml`
+- `shardingsphere-proxy/conf/config-shop_order.yaml`
+- `mysql/order0/init/01-init-order-shards.sql`
+- `mysql/order1/init/01-init-order-shards.sql`
+
+å¯åŠ¨æ–¹å¼ï¼ˆPowerShellï¼‰ï¼š
+
+```powershell
+$env:ORDER_SHARDING_ENABLED="true";
+$env:ORDER_DB_HOST="shardingsphere-proxy";
+$env:ORDER_DB_PORT="3307";
+docker-compose --profile sharding up -d --build
+```
+
+å¦‚éœ€åŒæ—¶å¯ç”¨ ESï¼š
+
+```powershell
+$env:ORDER_SHARDING_ENABLED="true";
+$env:ORDER_DB_HOST="shardingsphere-proxy";
+$env:ORDER_DB_PORT="3307";
+$env:ES_ENABLED="true";
+docker-compose --profile sharding --profile search up -d --build
+```
+
+éªŒè¯å»ºè®®ï¼š
+
+1. è°ƒç”¨ `POST /api/seckill/place-order` è¿ç»­ä¸‹å•å¤šä¸ªç”¨æˆ·ã€‚
+2. åˆ†åˆ«ç™»å½• `mysql-order-0`ã€`mysql-order-1` æŸ¥çœ‹ `orders_0`ã€`orders_1` æ•°æ®åˆ†å¸ƒã€‚
+3. æŸ¥çœ‹ `GET /api/instance/info`ï¼Œç¡®è®¤ `orderShardingEnabled=true`ã€‚

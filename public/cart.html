@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>购物车 - 云市集</title>
+    <link rel="stylesheet" href="/assets/styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <a href="/" class="brand">云市集</a>
+      <nav class="site-nav">
+        <a href="/">首页</a>
+        <a href="/search.html">搜索</a>
+        <a href="/cart.html" class="cart-link"
+          >购物车<span id="cart-count" class="cart-badge">0</span></a
+        >
+        <a href="/orders.html">我的订单</a>
+      </nav>
+      <form id="global-search" class="search-bar" role="search">
+        <input
+          id="global-search-input"
+          type="search"
+          placeholder="搜索商品"
+          aria-label="搜索商品"
+        />
+        <button type="submit">搜索</button>
+      </form>
+      <div class="user-box">
+        <input id="user-id-input" type="number" min="1" placeholder="用户ID" />
+        <button id="save-user-id-btn" type="button">保存</button>
+      </div>
+    </header>
+
+    <main class="page">
+      <section class="section-head">
+        <h1>购物车</h1>
+      </section>
+
+      <section class="split-grid">
+        <article class="block-card">
+          <table class="cart-table">
+            <thead>
+              <tr>
+                <th>商品</th>
+                <th>价格</th>
+                <th>数量</th>
+                <th>小计</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="cart-body"></tbody>
+          </table>
+        </article>
+        <aside class="block-card">
+          <h3>结算</h3>
+          <div class="summary-list">
+            <div class="summary-item"><span>商品种类</span><strong id="sum-kind">0</strong></div>
+            <div class="summary-item"><span>商品件数</span><strong id="sum-count">0</strong></div>
+            <div class="summary-item"><span>总金额</span><strong id="sum-amount">¥0.00</strong></div>
+          </div>
+          <div class="action-row">
+            <button id="btn-checkout" type="button">批量秒杀下单</button>
+            <button id="btn-clear-cart" class="danger" type="button">清空购物车</button>
+          </div>
+          <p class="subtle-text">当前购物车使用本地存储。批量下单会逐个调用秒杀接口。</p>
+        </aside>
+      </section>
+
+      <section class="section-head">
+        <h2>下单结果</h2>
+      </section>
+      <section id="checkout-result" class="order-list"></section>
+    </main>
+
+    <footer class="site-footer">
+      <p>云市集 · 购物车与批量秒杀</p>
+    </footer>
+    <div id="toast-root"></div>
+
+    <script src="/assets/store.js"></script>
+    <script>
+      const {
+        api,
+        ui,
+        navigateToSearch,
+        getCartItems,
+        getCartCount,
+        getCartTotalAmount,
+        updateCartQty,
+        removeFromCart,
+        clearCart,
+        setHeaderCartCount,
+        bindHeaderUserSave,
+        getUserId,
+        showToast,
+      } = window.StoreUI;
+
+      const searchForm = document.getElementById("global-search");
+      const searchInput = document.getElementById("global-search-input");
+      const cartBody = document.getElementById("cart-body");
+      const sumKind = document.getElementById("sum-kind");
+      const sumCount = document.getElementById("sum-count");
+      const sumAmount = document.getElementById("sum-amount");
+      const resultBox = document.getElementById("checkout-result");
+
+      searchForm.addEventListener("submit", (event) => {
+        event.preventDefault();
+        navigateToSearch(searchInput.value);
+      });
+
+      bindHeaderUserSave();
+      setHeaderCartCount();
+
+      function renderCart() {
+        const items = getCartItems();
+        if (!items.length) {
+          cartBody.innerHTML = '<tr><td colspan="5" class="empty-state">购物车是空的，先去挑几件商品吧。</td></tr>';
+        } else {
+          cartBody.innerHTML = items
+            .map(
+              (item) => `
+              <tr>
+                <td>${ui.escapeHtml(item.name)}（ID ${item.productId}）</td>
+                <td>${ui.money(item.price)}</td>
+                <td>
+                  <input class="qty-input" data-id="${item.productId}" type="number" min="1" value="${item.qty}" />
+                </td>
+                <td>${ui.money(item.price * item.qty)}</td>
+                <td>
+                  <button class="tiny danger btn-remove" data-id="${item.productId}">移除</button>
+                </td>
+              </tr>
+            `
+            )
+            .join("");
+        }
+
+        sumKind.textContent = String(items.length);
+        sumCount.textContent = String(getCartCount());
+        sumAmount.textContent = ui.money(getCartTotalAmount());
+        setHeaderCartCount();
+      }
+
+      async function checkoutAll() {
+        const items = getCartItems();
+        if (!items.length) {
+          showToast("购物车为空", "error");
+          return;
+        }
+        const userId = getUserId();
+        resultBox.innerHTML = "";
+
+        for (const item of items) {
+          const resp = await api.placeSeckillOrderSafe(userId, item.productId);
+          const msg = resp.ok
+            ? `提交成功，订单号 ${resp.payload.data.orderId}`
+            : resp.payload?.msg || "提交失败";
+          const statusClass = resp.ok ? "status-chip pending" : "status-chip failed";
+          resultBox.insertAdjacentHTML(
+            "beforeend",
+            `
+              <article class="order-card">
+                <p><strong>${ui.escapeHtml(item.name)}</strong>（ID ${item.productId}）</p>
+                <p><span class="${statusClass}">${resp.ok ? "PENDING" : "FAILED"}</span></p>
+                <p>${ui.escapeHtml(msg)}</p>
+              </article>
+            `
+          );
+          removeFromCart(item.productId);
+        }
+
+        renderCart();
+        showToast("批量秒杀已处理，结果见下方");
+      }
+
+      cartBody.addEventListener("change", (event) => {
+        const input = event.target.closest(".qty-input");
+        if (!input) return;
+        updateCartQty(Number(input.dataset.id), Number(input.value));
+        renderCart();
+      });
+
+      cartBody.addEventListener("click", (event) => {
+        const button = event.target.closest(".btn-remove");
+        if (!button) return;
+        removeFromCart(Number(button.dataset.id));
+        renderCart();
+      });
+
+      document.getElementById("btn-clear-cart").addEventListener("click", () => {
+        clearCart();
+        renderCart();
+        showToast("购物车已清空");
+      });
+
+      document.getElementById("btn-checkout").addEventListener("click", () => {
+        checkoutAll().catch((err) => showToast(err.message || "下单失败", "error"));
+      });
+
+      renderCart();
+    </script>
+  </body>
+</html>
