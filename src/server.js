@@ -85,7 +85,14 @@ const kafkaBrokers = (process.env.KAFKA_BROKERS || "kafka:9092")
   .filter(Boolean);
 const kafkaClientId = process.env.KAFKA_CLIENT_ID || "distributed-homework";
 const kafkaTopic = process.env.KAFKA_TOPIC_SECKILL_ORDER || "seckill-order-create";
+const kafkaTopicPayRequest =
+  process.env.KAFKA_TOPIC_PAYMENT_REQUEST || "order-payment-request";
+const kafkaTopicPayResult = process.env.KAFKA_TOPIC_PAYMENT_RESULT || "order-payment-result";
 const kafkaConsumerGroup = process.env.KAFKA_CONSUMER_GROUP || "seckill-order-worker";
+const paymentOutboxDispatchIntervalMs = Math.min(
+  Math.max(parseInt(process.env.PAYMENT_OUTBOX_DISPATCH_MS || "2000", 10), 500),
+  10000
+);
 
 let mysqlReady = false;
 let writePool = null;
@@ -98,6 +105,7 @@ let orderReadPoolIndex = 0;
 let kafkaReady = false;
 let kafkaProducer = null;
 let kafkaConsumer = null;
+let paymentOutboxTimer = null;
 
 const fakeDb = {
   "1": { id: 1, name: "High Concurrency Programming Practice", price: 99.0, stock: 1000 },
@@ -106,6 +114,7 @@ const fakeDb = {
 };
 const fakeOrders = new Map();
 const fakeUserProductOrders = new Map();
+const fakePaymentsByOrder = new Map();
 
 let requestCount = 0;
 
@@ -123,6 +132,12 @@ const ORDER_STATUS_PREFIX = "order:status:";
 const ORDER_STATUS_TTL = 7 * 24 * 3600;
 const ORDER_COMPENSATE_PREFIX = "seckill:compensated:";
 const ORDER_COMPENSATE_TTL = 7 * 24 * 3600;
+const PAYMENT_EVENT_CONSUMED_PREFIX = "payment:event:consumed:";
+
+const ORDER_DB_STATUS_CREATED = "CREATED";
+const ORDER_DB_STATUS_PAY_PENDING = "PAY_PENDING";
+const ORDER_DB_STATUS_PAID = "PAID";
+const ORDER_DB_STATUS_PAY_FAILED = "PAY_FAILED";
 
 class SnowflakeIdGenerator {
   constructor(workerId) {
@@ -269,6 +284,47 @@ function normalizeOrder(row) {
   };
 }
 
+function normalizePayment(row) {
+  if (!row) return null;
+  return {
+    paymentId: String(row.payment_id),
+    orderId: String(row.order_id),
+    userId: Number(row.user_id),
+    amount: Number(row.amount),
+    status: row.status,
+    failReason: row.fail_reason || null,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function normalizeOrderStatus(status) {
+  return String(status || "").trim().toUpperCase();
+}
+
+function isOrderPaidStatus(status) {
+  return normalizeOrderStatus(status) === ORDER_DB_STATUS_PAID;
+}
+
+function isOrderPayableStatus(status) {
+  const s = normalizeOrderStatus(status);
+  return (
+    s === ORDER_DB_STATUS_CREATED ||
+    s === ORDER_DB_STATUS_PAY_PENDING ||
+    s === ORDER_DB_STATUS_PAY_FAILED ||
+    s === "SUCCESS"
+  );
+}
+
+function mapDbOrderStatusToRuntimeStatus(status) {
+  const s = normalizeOrderStatus(status);
+  if (s === ORDER_DB_STATUS_CREATED || s === "SUCCESS") return "ORDER_CREATED";
+  if (s === ORDER_DB_STATUS_PAY_PENDING) return "PAY_PENDING";
+  if (s === ORDER_DB_STATUS_PAID) return ORDER_DB_STATUS_PAID;
+  if (s === ORDER_DB_STATUS_PAY_FAILED) return ORDER_DB_STATUS_PAY_FAILED;
+  return s || "UNKNOWN";
+}
+
 function getSeckillStockKey(productId) {
   return `${SECKILL_STOCK_PREFIX}${productId}`;
 }
@@ -283,6 +339,10 @@ function getOrderStatusKey(orderId) {
 
 function getOrderCompensateKey(orderId) {
   return `${ORDER_COMPENSATE_PREFIX}${orderId}`;
+}
+
+function getPaymentEventConsumedKey(eventId) {
+  return `${PAYMENT_EVENT_CONSUMED_PREFIX}${eventId}`;
 }
 
 async function setOrderStatus(orderId, status, extra = {}) {
@@ -304,6 +364,41 @@ async function getOrderStatus(orderId) {
   } catch (_) {
     return null;
   }
+}
+
+async function updateOrderDbStatus(orderId, toStatus, allowedFromStatuses) {
+  if (mysqlEnabledByEnv && mysqlReady) {
+    const writeOrderPool = getOrderWritePool();
+    if (!writeOrderPool) return 0;
+    if (!allowedFromStatuses || !allowedFromStatuses.length) {
+      const [res] = await writeOrderPool.execute(
+        "UPDATE orders SET status = ? WHERE order_id = ?",
+        [toStatus, orderId]
+      );
+      return Number(res.affectedRows || 0);
+    }
+
+    const placeholders = allowedFromStatuses.map(() => "?").join(",");
+    const [res] = await writeOrderPool.execute(
+      `UPDATE orders SET status = ? WHERE order_id = ? AND status IN (${placeholders})`,
+      [toStatus, orderId, ...allowedFromStatuses]
+    );
+    return Number(res.affectedRows || 0);
+  }
+
+  const existing = fakeOrders.get(String(orderId));
+  if (!existing) return 0;
+  if (!allowedFromStatuses || !allowedFromStatuses.length) {
+    existing.status = toStatus;
+    fakeOrders.set(String(orderId), existing);
+    return 1;
+  }
+  if (allowedFromStatuses.includes(String(existing.status))) {
+    existing.status = toStatus;
+    fakeOrders.set(String(orderId), existing);
+    return 1;
+  }
+  return 0;
 }
 
 async function initMysql() {

@@ -1,0 +1,40 @@
+
+  .   ____          _            __ _ _
+ /\\ / ___'_ __ _ _(_)_ __  __ _ \ \ \ \
+( ( )\___ | '_ | '_| | '_ \/ _` | \ \ \ \
+ \\/  ___)| |_)| | | | | || (_| |  ) ) ) )
+  '  |____| .__|_| |_|_| |_\__, | / / / /
+ =========|_|==============|___/=/_/_/_/
+ :: Spring Boot ::                (v3.2.5)
+
+2026-04-21T00:50:11.423+08:00  INFO 162992 --- [provider-a] [           main] c.demo.providera.ProviderAApplication    : Starting ProviderAApplication using Java 17.0.18 with PID 162992 (D:\Distributedworks\Distributed_homework\spring-cloud-nacos-demo\provider-a\target\provider-a-1.0.0.jar started by asus in D:\Distributedworks\Distributed_homework\spring-cloud-nacos-demo)
+2026-04-21T00:50:11.430+08:00  INFO 162992 --- [provider-a] [           main] c.demo.providera.ProviderAApplication    : No active profile set, falling back to 1 default profile: "default"
+2026-04-21T00:50:11.498+08:00  INFO 162992 --- [provider-a] [           main] c.a.c.n.c.NacosConfigDataLoader          : [Nacos Config] Load config[dataId=provider-a.yaml, group=DEFAULT_GROUP] success
+2026-04-21T00:50:12.763+08:00  INFO 162992 --- [provider-a] [           main] o.s.cloud.context.scope.GenericScope     : BeanFactory id=39b77faf-05b3-3026-a8b9-8227ee2194ca
+2026-04-21T00:50:13.089+08:00  INFO 162992 --- [provider-a] [           main] o.s.b.w.embedded.tomcat.TomcatWebServer  : Tomcat initialized with port 19091 (http)
+2026-04-21T00:50:13.103+08:00  INFO 162992 --- [provider-a] [           main] o.apache.catalina.core.StandardService   : Starting service [Tomcat]
+2026-04-21T00:50:13.104+08:00  INFO 162992 --- [provider-a] [           main] o.apache.catalina.core.StandardEngine    : Starting Servlet engine: [Apache Tomcat/10.1.20]
+2026-04-21T00:50:13.144+08:00  INFO 162992 --- [provider-a] [           main] o.a.c.c.C.[Tomcat].[localhost].[/]       : Initializing Spring embedded WebApplicationContext
+2026-04-21T00:50:13.147+08:00  INFO 162992 --- [provider-a] [           main] w.s.c.ServletWebServerApplicationContext : Root WebApplicationContext: initialization completed in 1642 ms
+2026-04-21T00:50:15.010+08:00  INFO 162992 --- [provider-a] [           main] o.s.b.a.e.web.EndpointLinksResolver      : Exposing 2 endpoint(s) beneath base path '/actuator'
+2026-04-21T00:50:15.118+08:00  WARN 162992 --- [provider-a] [           main] ConfigServletWebServerApplicationContext : Exception encountered during context initialization - cancelling refresh attempt: org.springframework.context.ApplicationContextException: Failed to start bean 'webServerStartStop'
+2026-04-21T00:50:15.158+08:00  INFO 162992 --- [provider-a] [           main] .s.b.a.l.ConditionEvaluationReportLogger : 
+
+Error starting ApplicationContext. To display the condition evaluation report re-run your application with 'debug' enabled.
+2026-04-21T00:50:15.212+08:00 ERROR 162992 --- [provider-a] [           main] o.s.b.d.LoggingFailureAnalysisReporter   : 
+
+***************************
+APPLICATION FAILED TO START
+***************************
+
+Description:
+
+Web server failed to start. Port 19091 was already in use.
+
+Action:
+
+Identify and stop the process that's listening on port 19091 or configure this application to listen on another port.
+
+2026-04-21T00:50:15.219+08:00  WARN 162992 --- [provider-a] [       Thread-1] c.a.n.common.http.HttpClientBeanHolder   : [HttpClientBeanHolder] Start destroying common HttpClient
+2026-04-21T00:50:15.219+08:00  WARN 162992 --- [provider-a] [       Thread-3] c.a.nacos.common.notify.NotifyCenter     : [NotifyCenter] Start destroying Publisher
+2026-04-21T00:50:15.221+08:00  WARN 162992 --- [provider-a] [       Thread-3] c.a.nacos.common.notify.NotifyCenter     : [NotifyCenter] Destruction of the end
